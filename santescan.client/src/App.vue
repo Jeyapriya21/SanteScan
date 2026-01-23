@@ -1,47 +1,27 @@
-<script setup lang="ts">
-import HelloWorld from './components/HelloWorld.vue'
-import TheWelcome from './components/TheWelcome.vue'
-</script>
-
 <template>
-  <header>
-    <img alt="Vue logo" class="logo" src="./assets/logo.svg" width="125" height="125" />
+  <div class="min-h-screen bg-slate-200 flex justify-center items-center p-4">
+    <div class="w-[380px] h-[780px] bg-white rounded-[3rem] shadow-2xl border-[10px] border-slate-900 overflow-hidden flex flex-col relative">
+      
+      <HomeView />
 
-    <div class="wrapper">
-      <HelloWorld msg="You did it!" />
+      <nav class="bg-gray-50 border-t flex justify-around p-4 pb-8 text-gray-400">
+        <button class="text-blue-600 flex flex-col items-center">
+          <i class="fas fa-home"></i>
+          <span class="text-[10px] font-bold uppercase mt-1">Accueil</span>
+        </button>
+        <button class="flex flex-col items-center">
+          <i class="fas fa-history"></i>
+          <span class="text-[10px] font-bold uppercase mt-1">Histoire</span>
+        </button>
+        <button class="flex flex-col items-center">
+          <i class="fas fa-user-md"></i>
+          <span class="text-[10px] font-bold uppercase mt-1">Conseils</span>
+        </button>
+      </nav>
+
+      <div class="absolute bottom-0 w-full bg-white text-[9px] text-center p-1 text-gray-400 border-t border-gray-100">
+        Santé Scan est un outil d'information... Consulter un médecin.
+      </div>
     </div>
-  </header>
-
-  <main>
-    <TheWelcome />
-  </main>
+  </div>
 </template>
-
-<style scoped>
-header {
-  line-height: 1.5;
-}
-
-.logo {
-  display: block;
-  margin: 0 auto 2rem;
-}
-
-@media (min-width: 1024px) {
-  header {
-    display: flex;
-    place-items: center;
-    padding-right: calc(var(--section-gap) / 2);
-  }
-
-  .logo {
-    margin: 0 2rem 0 0;
-  }
-
-  header .wrapper {
-    display: flex;
-    place-items: flex-start;
-    flex-wrap: wrap;
-  }
-}
-</style>
