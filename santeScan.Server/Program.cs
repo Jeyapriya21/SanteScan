@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using santeScan.Server.Data;
 using santeScan.Server.Middleware;
 using santeScan.Server.Services;
+using santeScan.Server.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,6 +16,9 @@ builder.Services.AddProblemDetails();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+// Configuration des services via extension methods
+builder.Services.ConfigureServices(builder.Configuration);
 
 // Configuration de la base de données SQLite
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
