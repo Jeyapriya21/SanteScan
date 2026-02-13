@@ -1,50 +1,33 @@
 using Microsoft.EntityFrameworkCore;
 using santeScan.Server.Data;
 using santeScan.Server.Middleware;
-using santeScan.Server.Services;
 using santeScan.Server.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-
+// Add services to the container
 builder.Services.AddControllers();
 
+// Exception handling
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+// API Documentation
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// Configuration des services via extension methods
-builder.Services.ConfigureServices(builder.Configuration);
-
-// Configuration de la base de données SQLite
+    // Database
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlite("Data Source=santescan.db"));
+    options.UseSqlite(
+        builder.Configuration.GetConnectionString("DefaultConnection") 
+        ?? "Data Source=santescan.db"));
 
-builder.Services.AddScoped<OcrService>();
-builder.Services.AddScoped<OllamaService>(); // Service pour l'analyse avec IA
+// Application Services (HttpClient + interfaces)
+builder.Services.ConfigureServices(builder.Configuration);
 
 var app = builder.Build();
 
-app.UseDefaultFiles();
-app.UseStaticFiles();
-
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
-
-app.UseHttpsRedirection();
-
-app.UseAuthorization();
-
-app.MapControllers();
-
-app.MapFallbackToFile("/index.html");
+// Configure pipeline
+app.ConfigurePipeline();
 
 app.Run();

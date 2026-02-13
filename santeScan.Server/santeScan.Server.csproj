@@ -4,15 +4,17 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <SpaRoot>..\santescan.client</SpaRoot>
-    <SpaProxyLaunchCommand>npm run dev</SpaProxyLaunchCommand>
-    <SpaProxyServerUrl>https://localhost:53703</SpaProxyServerUrl>
+    <!-- COMMENTER OU SUPPRIMER ces lignes SPA temporairement -->
+    <!--<SpaRoot>..\santescan.client</SpaRoot>-->
+    <!--<SpaProxyLaunchCommand>npm run dev</SpaProxyLaunchCommand>-->
+    <!--<SpaProxyServerUrl>https://localhost:53703</SpaProxyServerUrl>-->
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.SpaProxy">
+    <!-- COMMENTER la référence SpaProxy si vous n'avez pas de projet client -->
+    <!--<PackageReference Include="Microsoft.AspNetCore.SpaProxy">
       <Version>8.*-*</Version>
-    </PackageReference>
+    </PackageReference>-->
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.12" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.12">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -29,10 +31,11 @@
     <PackageReference Include="Tesseract.Drawing" Version="5.2.0" />
   </ItemGroup>
 
-  <ItemGroup>
+  <!-- COMMENTER la référence au projet client -->
+  <!--<ItemGroup>
     <ProjectReference Include="..\santescan.client\santescan.client.esproj">
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
-  </ItemGroup>
+  </ItemGroup>-->
 
 </Project>

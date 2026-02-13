@@ -6,4 +6,4 @@ public class AiAnalysisException : Exception
     
     public AiAnalysisException(string message, Exception innerException) 
         : base(message, innerException) { }
-}
+}   
