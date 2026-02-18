@@ -44,7 +44,6 @@
 <script setup lang="ts">
   import { ref } from 'vue';
 
-  // 1. Interface pour la réponse du backend ASP.NET Core
   interface AnalysisResult {
     analysisId: string;
     message: string;
@@ -52,19 +51,6 @@
     status: string;
   }
 
-  // 2. Interface pour les détails de l'analyse (si vous voulez récupérer plus d'infos)
-  interface AnalysisDetails {
-    id: string;
-    userId: string;
-    uploadDate: string;
-    rawText: string;
-    aiSummary: string;
-    globalStatus: string;
-    medicalDisclaimer: string;
-    details: any[];
-  }
-
-  // 3. Définition des événements que le composant peut envoyer
   const emit = defineEmits<{
     (e: 'analysis-finished', result: AnalysisResult): void;
   }>();
@@ -74,8 +60,22 @@
   const isDragging = ref<boolean>(false);
   const uploadError = ref<string | null>(null);
 
-  // ✅ Configuration de l'API (à adapter selon votre environnement)
-  const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://localhost:7250';
+  // ✅ NOUVEAU : Fonction pour générer/récupérer un sessionId
+  function getOrCreateSessionId(): string {
+    const STORAGE_KEY = 'santescan_session_id';
+    let sessionId = localStorage.getItem(STORAGE_KEY);
+
+    if (!sessionId) {
+      // Générer un UUID v4
+      sessionId = crypto.randomUUID();
+      localStorage.setItem(STORAGE_KEY, sessionId);
+      console.log('✅ Nouveau sessionId créé:', sessionId);
+    } else {
+      console.log('📌 SessionId existant:', sessionId);
+    }
+
+    return sessionId;
+  }
 
   const triggerFileInput = (): void => {
     fileInput.value?.click();
@@ -97,7 +97,6 @@
   };
 
   const processFile = async (file: File): Promise<void> => {
-    // ✅ Validation des formats (correspondant au backend)
     const validTypes: string[] = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
     const validExtensions: string[] = ['.jpg', '.jpeg', '.png', '.pdf'];
     const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
@@ -107,8 +106,7 @@
       return;
     }
 
-    // ✅ Validation de la taille (10 MB max comme dans le backend)
-    const maxSize = 10 * 1024 * 1024; // 10 MB
+    const maxSize = 10 * 1024 * 1024;
     if (file.size > maxSize) {
       uploadError.value = "Fichier trop volumineux (max 10 MB)";
       return;
@@ -120,59 +118,37 @@
     const formData = new FormData();
     formData.append('file', file);
 
+    // ✅ CORRECTION : Obtenir le sessionId
+    const sessionId = getOrCreateSessionId();
+    const token = localStorage.getItem('user_token');
+
     try {
-      // ✅ Envoi vers votre backend ASP.NET Core
-      const response = await fetch(`${API_BASE_URL}/api/Analyses/upload`, {
-        method: 'POST',
-        body: formData,
-        // ⚠️ Si vous avez un système d'authentification, décommentez:
-        // headers: {
-        //   'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
-        // },
-      });
+    const response = await fetch('/api/Analyses/upload', {
+      method: 'POST',
+      headers: {
+        // ✅ On envoie le Session ID (Requis par ton nouveau contrôleur)
+        'X-Session-Id': sessionId,
+        // ✅ On envoie le Token s'il existe
+        ...(token && { 'Authorization': `Bearer ${token}` })
+      },
+      body: formData,
+    });
 
-      // ✅ Gestion des différents codes d'erreur
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-
-        switch (response.status) {
-          case 400:
-            uploadError.value = "Fichier invalide. Vérifiez le format et la taille.";
-            break;
-          case 401:
-            uploadError.value = "Vous devez être connecté pour analyser un bilan.";
-            break;
-          case 422:
-            uploadError.value = errorData.error || "Impossible d'extraire le texte. Vérifiez la qualité de l'image.";
-            break;
-          case 503:
-            uploadError.value = errorData.error || "Service d'analyse IA temporairement indisponible.";
-            break;
-          default:
-            uploadError.value = "Une erreur est survenue lors de l'analyse.";
-        }
-        return;
-      }
-
-      // ✅ Récupération du résultat
-      const data: AnalysisResult = await response.json();
-
-      console.log('✅ Analyse terminée:', data);
-
-      // Émettre le résultat au composant parent
-      emit('analysis-finished', data);
-
-    } catch (err) {
-      console.error('❌ Erreur réseau:', err);
-      uploadError.value = err instanceof Error
-        ? `Erreur réseau: ${err.message}`
-        : "Impossible de contacter le serveur. Vérifiez que l'API est lancée.";
-    } finally {
-      isUploading.value = false;
-      // Réinitialiser l'input file pour permettre le re-upload du même fichier
-      if (fileInput.value) {
-        fileInput.value.value = '';
-      }
+    if (!response.ok) {
+      // Si erreur 500, on essaie de lire le JSON pour voir le message d'erreur
+      const errorText = await response.text();
+      console.error("Détails de l'erreur serveur:", errorText);
+      throw new Error(`Erreur serveur (${response.status})`);
     }
+
+    const result = await response.json();
+    emit('analysis-finished', result);
+
+  } catch (err: any) {
+    uploadError.value = err.message || "Erreur lors de l'envoi";
+    console.error("❌ Erreur complète:", err);
+  } finally {
+    isUploading.value = false;
+  }
   };
 </script>

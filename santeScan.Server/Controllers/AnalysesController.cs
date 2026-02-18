@@ -5,82 +5,96 @@ using santeScan.Server.Models;
 using santeScan.Server.Services.Interfaces;
 using santeScan.Server.Exceptions;
 using System.Security.Claims;
-using System.IO;
-using Microsoft.AspNetCore.Hosting;
 
 namespace santeScan.Server.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class AnalysesController : ControllerBase
+public class AnalysesController : ControllerBase    
 {
     private readonly ApplicationDbContext _context;
     private readonly IOcrService _ocrService;
     private readonly IOllamaService _ollamaService;
+    private readonly ISessionService _sessionService;
     private readonly ILogger<AnalysesController> _logger;
-    private readonly IConfiguration _configuration;
-    private readonly IWebHostEnvironment _env;
 
-    private const int MaxFileSizeInBytes = 10 * 1024 * 1024; // 10 MB
-    private static readonly string[] AllowedExtensions = { ".jpg", ".jpeg", ".png", ".pdf" };   
+    private const int MaxFileSizeInBytes = 10 * 1024 * 1024;
+    private static readonly string[] AllowedExtensions = { ".jpg", ".jpeg", ".png", ".pdf" };
 
     public AnalysesController(
         ApplicationDbContext context,
         IOcrService ocrService,
         IOllamaService ollamaService,
-        ILogger<AnalysesController> logger,
-        IConfiguration configuration,
-        IWebHostEnvironment env)
+        ISessionService sessionService,
+        ILogger<AnalysesController> logger)
     {
         _context = context;
         _ocrService = ocrService;
         _ollamaService = ollamaService;
+        _sessionService = sessionService;
         _logger = logger;
-        _configuration = configuration;
-        _env = env;
     }
 
     [HttpPost("upload")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
-    public async Task<IActionResult> UploadBloodTest(IFormFile file)
+    public async Task<IActionResult> UploadBloodTest(
+        IFormFile file,
+        [FromHeader(Name = "X-Session-Id")] string? sessionId)
     {
         var validationResult = ValidateFile(file);
         if (validationResult != null)
             return validationResult;
 
-        // ✅ CORRECTION : Utiliser un userId temporaire en développement
-        var userId = GetAuthenticatedUserId() ?? GetOrCreateTempUserId();
+        // ✅ Gestion du userId : authentifié OU guest via sessionId
+        Guid userId;
+        var authenticatedUserId = GetAuthenticatedUserId();
+
+        if (authenticatedUserId.HasValue)
+        {
+            // Utilisateur authentifié
+            userId = authenticatedUserId.Value;
+            sessionId = null; // Pas de sessionId pour les utilisateurs authentifiés
+        }
+        else if (!string.IsNullOrWhiteSpace(sessionId))
+        {
+            // Utilisateur guest avec sessionId
+            userId = await _sessionService.GetOrCreateGuestUserAsync(sessionId);
+        }
+        else
+        {
+            return BadRequest("SessionId requis pour les utilisateurs non authentifiés");
+        }
 
         string? filePath = null;
         try
         {
             filePath = await SaveFileTemporarily(file);
-            var analysis = await ProcessAnalysis(filePath, userId, file.FileName);
-            
+            var analysis = await ProcessAnalysis(filePath, userId, sessionId, file.FileName);
+
             _logger.LogInformation(
-                "Analyse {AnalysisId} créée avec succès pour l'utilisateur {UserId}",
-                analysis.Id, userId);
+                "Analyse {AnalysisId} créée pour userId={UserId}, sessionId={SessionId}",
+                analysis.Id, userId, sessionId ?? "null");
 
             return Ok(new
             {
                 analysisId = analysis.Id,
                 message = "Analyse terminée avec succès.",
                 uploadDate = analysis.UploadDate,
-                status = analysis.GlobalStatus
+                status = analysis.GlobalStatus,
+                isGuest = !string.IsNullOrWhiteSpace(sessionId)
             });
         }
         catch (OcrException ex)
         {
-            _logger.LogWarning(ex, "Erreur OCR pour l'utilisateur {UserId}", userId);
+            _logger.LogWarning(ex, "Erreur OCR");
             return StatusCode(422, new { error = ex.Message });
         }
         catch (AiAnalysisException ex)
         {
-            _logger.LogWarning(ex, "Service IA indisponible pour l'utilisateur {UserId}", userId);
+            _logger.LogWarning(ex, "Service IA indisponible");
             return StatusCode(503, new { error = ex.Message });
         }
         finally
@@ -89,26 +103,52 @@ public class AnalysesController : ControllerBase
         }
     }
 
+    [HttpGet("session/{sessionId}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetSessionAnalyses(string sessionId)
+    {
+        var analyses = await _context.Analyses
+            .Where(a => a.SessionId == sessionId)
+            .OrderByDescending(a => a.UploadDate)
+            .Select(a => new
+            {
+                a.Id,
+                a.UploadDate,
+                a.GlobalStatus,
+                a.AiSummary
+            })
+            .ToListAsync();
+
+        return Ok(new
+        {
+            sessionId,
+            count = analyses.Count,
+            analyses
+        });
+    }
+
     [HttpGet("{analysisId}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetAnalysis(Guid analysisId)
+    public async Task<IActionResult> GetAnalysis(
+        Guid analysisId,
+        [FromHeader(Name = "X-Session-Id")] string? sessionId)
     {
-        // ✅ Autoriser les requêtes non authentifiées en développement
         var userId = GetAuthenticatedUserId();
 
-        var query = _context.Analyses.Include(a => a.Details).AsQueryable();
-
-        // Si authentifié, filtrer par userId, sinon retourner l'analyse si elle existe
-        if (userId.HasValue)
-        {
-            query = query.Where(a => a.UserId == userId.Value);
-        }
-
-        var analysis = await query.FirstOrDefaultAsync(a => a.Id == analysisId);
+        var analysis = await _context.Analyses
+            .Include(a => a.Details)
+            .FirstOrDefaultAsync(a => a.Id == analysisId);
 
         if (analysis == null)
             return NotFound();
+
+        // Vérifier les droits d'accès
+        if (userId.HasValue && analysis.UserId != userId.Value)
+            return Forbid();
+
+        if (!userId.HasValue && analysis.SessionId != sessionId)
+            return Forbid();
 
         return Ok(analysis);
     }
@@ -122,10 +162,10 @@ public class AnalysesController : ControllerBase
 
         var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
         if (!AllowedExtensions.Contains(extension))
-            return BadRequest($"Format non supporté. Formats acceptés : {string.Join(", ", AllowedExtensions)}");
+            return BadRequest($"Format non supporté : {string.Join(", ", AllowedExtensions)}");
 
         if (file.Length > MaxFileSizeInBytes)
-            return BadRequest($"Fichier trop volumineux (max {MaxFileSizeInBytes / (1024 * 1024)} MB).");
+            return BadRequest($"Fichier trop volumineux (max 10 MB).");
 
         return null;
     }
@@ -133,45 +173,7 @@ public class AnalysesController : ControllerBase
     private Guid? GetAuthenticatedUserId()
     {
         var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
-        {
-            return null;
-        }
-        return userId;
-    }
-
-    // ✅ NOUVEAU : Créer un utilisateur temporaire pour le développement
-    private Guid GetOrCreateTempUserId()
-    {
-        // En développement, créer un utilisateur "demo" si nécessaire
-        if (_env.IsDevelopment())
-        {
-            var demoUser = _context.Users.FirstOrDefault(u => u.Email == "demo@santescan.local");
-            
-            if (demoUser == null)
-            {
-                demoUser = new User
-                {
-                    Id = Guid.NewGuid(),
-                    Email = "demo@santescan.local",
-                    PasswordHash = "demo-hash",
-                    Age = 30,
-                    Gender = "Non spécifié",
-                    CreatedAt = DateTime.UtcNow
-                };
-                
-                _context.Users.Add(demoUser);
-                _context.SaveChanges();
-                
-                _logger.LogInformation("Utilisateur démo créé : {UserId}", demoUser.Id);
-            }
-            
-            return demoUser.Id;
-        }
-
-        // En production, retourner un Guid vide (à remplacer par une vraie erreur)
-        _logger.LogWarning("Tentative d'accès non authentifié en production");
-        return Guid.Empty;
+        return Guid.TryParse(userIdClaim, out var userId) ? userId : null;
     }
 
     private static async Task<string> SaveFileTemporarily(IFormFile file)
@@ -185,19 +187,20 @@ public class AnalysesController : ControllerBase
     private async Task<BloodTestAnalysis> ProcessAnalysis(
         string filePath,
         Guid userId,
+        string? sessionId,
         string fileName)
     {
-        _logger.LogInformation(
-            "Début du traitement du fichier {FileName} pour l'utilisateur {UserId}",
-            fileName, userId);
+        var extractedText = _ocrService.ExtraireTexteAnalyse(filePath);
+        if (string.IsNullOrWhiteSpace(extractedText))
+            throw new OcrException("Aucun texte extrait.");
 
-        var extractedText = ExtractText(filePath, fileName);
-        var aiSummary = await AnalyzeText(extractedText, userId);
+        var aiSummary = await _ollamaService.AnalyserAnalyseSanguine(extractedText);
 
         var analysis = new BloodTestAnalysis
         {
             Id = Guid.NewGuid(),
             UserId = userId,
+            SessionId = sessionId,
             UploadDate = DateTime.UtcNow,
             RawText = extractedText,
             AiSummary = aiSummary,
@@ -208,42 +211,6 @@ public class AnalysesController : ControllerBase
         await _context.SaveChangesAsync();
 
         return analysis;
-    }
-
-    private string ExtractText(string filePath, string fileName)
-    {
-        try
-        {
-            var text = _ocrService.ExtraireTexteAnalyse(filePath);
-            if (string.IsNullOrWhiteSpace(text))
-            {
-                throw new OcrException(
-                    "Aucun texte extrait. Vérifiez la qualité de l'image.");
-            }
-            return text;
-        }
-        catch (Exception ex) when (ex is not OcrException)
-        {
-            _logger.LogError(ex, "Erreur OCR pour le fichier {FileName}", fileName);
-            throw new OcrException(
-                "Impossible d'extraire le texte de l'image. Vérifiez la qualité et le format.",
-                ex);
-        }
-    }
-
-    private async Task<string> AnalyzeText(string text, Guid userId)
-    {
-        try
-        {
-            return await _ollamaService.AnalyserAnalyseSanguine(text);
-        }
-        catch (Exception ex) when (ex is not AiAnalysisException)
-        {
-            _logger.LogError(ex, "Erreur IA pour l'utilisateur {UserId}", userId);
-            throw new AiAnalysisException(
-                "Le service d'analyse IA est temporairement indisponible.",
-                ex);
-        }
     }
 
     private void CleanupTempFile(string? filePath)
@@ -257,7 +224,7 @@ public class AnalysesController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Impossible de supprimer le fichier temporaire {FilePath}", filePath);
+            _logger.LogWarning(ex, "Impossible de supprimer {FilePath}", filePath);
         }
     }
 

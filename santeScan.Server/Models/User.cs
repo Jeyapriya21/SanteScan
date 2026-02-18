@@ -21,4 +21,10 @@ public class User
     public string Gender { get; set; } = string.Empty;
     
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    
+    // ✅ NOUVEAU : Gestion des utilisateurs temporaires/guests
+    public bool IsGuest { get; set; } = false;
+    
+    [MaxLength(100)]
+    public string? SessionId { get; set; }  // ID de session pour les guests
 }

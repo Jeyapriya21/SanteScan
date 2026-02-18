@@ -42,7 +42,7 @@
 import AppHeader from '../../components/AppHeader.vue'
 import ScanButton from '../../components/ScanButton.vue'
 import AiSummary from '../../components/AiSummary.vue'
-// import HistoryList from '../../components/HistoryList.vue'
+import HistoryList from '../../components/HistoryList.vue'
 
 const historiqueData = [
   { id: 1, date: '01/12/2025', titre: 'Bilan Complet', resultat: 'OK', couleur: 'text-green-600' },

@@ -2,6 +2,7 @@
 using santeScan.Server.Models;
 
 namespace santeScan.Server.Data;
+
 public class ApplicationDbContext : DbContext
 {
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
@@ -9,7 +10,6 @@ public class ApplicationDbContext : DbContext
     {
     }
 
-    // Vos tables en base de données
     public DbSet<User> Users { get; set; }
     public DbSet<BloodTestAnalysis> Analyses { get; set; }
     public DbSet<BloodTestDetail> AnalysisDetails { get; set; }
@@ -22,9 +22,16 @@ public class ApplicationDbContext : DbContext
             .WithOne()
             .HasForeignKey(d => d.AnalysisId);
 
-        // Sécurité : Indexer l'email pour des recherches rapides
+        // ✅ Index sur l'email pour recherches rapides
         modelBuilder.Entity<User>()
             .HasIndex(u => u.Email)
             .IsUnique();
+        
+        // ✅ NOUVEAU : Index sur SessionId pour recherches guests
+        modelBuilder.Entity<User>()
+            .HasIndex(u => u.SessionId);
+        
+        modelBuilder.Entity<BloodTestAnalysis>()
+            .HasIndex(a => a.SessionId);
     }
 }

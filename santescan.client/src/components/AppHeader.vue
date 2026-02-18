@@ -4,9 +4,10 @@
       
       <div class="flex items-center gap-4">
         <div class="w-12 h-12 border-2 border-blue-600 rounded-full flex items-center justify-center overflow-hidden bg-white shrink-0">
-          <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <!-- <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 10-3.84 4.799l1.156 3.47a1 1 0 001.907-.62a9 9 0 115.145-6.183l1.036 1.036a2 2 0 002.828 0l.022-.022z" />
-          </svg>
+          </svg> -->
+          <img src="../assets/images/logoSanteScan.png" alt="Logo Santé Scan" class="w-14 h-14 object-contain">
         </div>
         
         <div class="flex flex-col">

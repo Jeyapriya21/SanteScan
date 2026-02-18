@@ -33,6 +33,7 @@ public static class ServiceExtensions
         // Application Services avec interfaces
         services.AddScoped<IOcrService, OcrService>();
         services.AddScoped<IOllamaService, OllamaService>();
+        services.AddScoped<ISessionService, SessionService>();
 
         // HttpClient pour OllamaService
         services.AddHttpClient<IOllamaService, OllamaService>(client =>

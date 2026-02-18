@@ -22,5 +22,12 @@ public class BloodTestAnalysis
     public string MedicalDisclaimer => 
         "Ce résumé est informatif et ne remplace pas un avis médical.";
     
+    // ✅ NOUVEAU : Lier à une session pour les guests
+    [MaxLength(100)]
+    public string? SessionId { get; set; }
+    
     public List<BloodTestDetail> Details { get; set; } = new();
+    
+    // Navigation property
+    public User? User { get; set; }
 }
