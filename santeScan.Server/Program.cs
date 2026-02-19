@@ -19,7 +19,6 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 
 // 3. Enregistrement des services (ORDRE IMPORTANT)
 // ✅ Enregistre le SessionService AVANT d'appeler ConfigureServices si possible
-builder.Services.AddScoped<ISessionService, SessionService>();
 
 // Cette méthode doit contenir l'enregistrement de IOcrService et IOllamaService
 builder.Services.ConfigureServices(builder.Configuration);

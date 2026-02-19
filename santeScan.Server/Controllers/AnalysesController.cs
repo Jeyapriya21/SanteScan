@@ -48,24 +48,21 @@ public class AnalysesController : ControllerBase
         if (validationResult != null)
             return validationResult;
 
-        // ✅ Gestion du userId : authentifié OU guest via sessionId
         Guid userId;
         var authenticatedUserId = GetAuthenticatedUserId();
 
         if (authenticatedUserId.HasValue)
         {
-            // Utilisateur authentifié
             userId = authenticatedUserId.Value;
-            sessionId = null; // Pas de sessionId pour les utilisateurs authentifiés
+            sessionId = null;
         }
         else if (!string.IsNullOrWhiteSpace(sessionId))
         {
-            // Utilisateur guest avec sessionId
             userId = await _sessionService.GetOrCreateGuestUserAsync(sessionId);
         }
         else
         {
-            return BadRequest("SessionId requis pour les utilisateurs non authentifiés");
+            return BadRequest(new { error = "SessionId requis pour les utilisateurs non authentifiés" });
         }
 
         string? filePath = null;
@@ -89,13 +86,18 @@ public class AnalysesController : ControllerBase
         }
         catch (OcrException ex)
         {
-            _logger.LogWarning(ex, "Erreur OCR");
-            return StatusCode(422, new { error = ex.Message });
+            _logger.LogError(ex, "Erreur OCR");
+            return StatusCode(422, new { error = "Erreur OCR", message = ex.Message, details = ex.InnerException?.Message });
         }
         catch (AiAnalysisException ex)
         {
-            _logger.LogWarning(ex, "Service IA indisponible");
-            return StatusCode(503, new { error = ex.Message });
+            _logger.LogError(ex, "Service IA indisponible");
+            return StatusCode(503, new { error = "Service IA indisponible", message = ex.Message, details = ex.InnerException?.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Erreur inattendue");
+            return StatusCode(500, new { error = "Erreur Interne", message = ex.Message, details = ex.InnerException?.Message });
         }
         finally
         {
@@ -158,14 +160,14 @@ public class AnalysesController : ControllerBase
     private IActionResult? ValidateFile(IFormFile? file)
     {
         if (file == null || file.Length == 0)
-            return BadRequest("Aucun fichier reçu.");
+            return BadRequest(new { error = "Aucun fichier reçu." });
 
         var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
         if (!AllowedExtensions.Contains(extension))
-            return BadRequest($"Format non supporté : {string.Join(", ", AllowedExtensions)}");
+            return BadRequest(new { error = $"Format non supporté : {string.Join(", ", AllowedExtensions)}" });
 
         if (file.Length > MaxFileSizeInBytes)
-            return BadRequest($"Fichier trop volumineux (max 10 MB).");
+            return BadRequest(new { error = $"Fichier trop volumineux (max 10 MB)." });
 
         return null;
     }
@@ -176,11 +178,19 @@ public class AnalysesController : ControllerBase
         return Guid.TryParse(userIdClaim, out var userId) ? userId : null;
     }
 
+    // ✅ CORRECTION : Garder l'extension originale du fichier
     private static async Task<string> SaveFileTemporarily(IFormFile file)
     {
-        var filePath = Path.GetTempFileName();
-        await using var stream = System.IO.File.Create(filePath);
+        // Créer un nom de fichier temporaire avec l'extension originale
+        var tempPath = Path.GetTempPath();
+        var fileName = $"{Guid.NewGuid()}{Path.GetExtension(file.FileName)}";
+        var filePath = Path.Combine(tempPath, fileName);
+
+        // Copier le fichier
+        await using var stream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None, 4096, useAsync: true);
         await file.CopyToAsync(stream);
+        await stream.FlushAsync(); // ✅ S'assurer que tout est écrit
+
         return filePath;
     }
 
@@ -190,6 +200,14 @@ public class AnalysesController : ControllerBase
         string? sessionId,
         string fileName)
     {
+        _logger.LogInformation("Début du traitement du fichier {FileName} pour userId={UserId}", fileName, userId);
+
+        // ✅ Vérifier que le fichier existe avant de le traiter
+        if (!System.IO.File.Exists(filePath))
+        {
+            throw new FileNotFoundException($"Le fichier temporaire n'existe pas : {filePath}");
+        }
+
         var extractedText = _ocrService.ExtraireTexteAnalyse(filePath);
         if (string.IsNullOrWhiteSpace(extractedText))
             throw new OcrException("Aucun texte extrait.");
@@ -210,21 +228,27 @@ public class AnalysesController : ControllerBase
         _context.Analyses.Add(analysis);
         await _context.SaveChangesAsync();
 
+        _logger.LogInformation("✅ Analyse {AnalysisId} sauvegardée avec succès", analysis.Id);
+
         return analysis;
     }
 
     private void CleanupTempFile(string? filePath)
     {
-        if (string.IsNullOrEmpty(filePath) || !System.IO.File.Exists(filePath))
+        if (string.IsNullOrEmpty(filePath))
             return;
 
         try
         {
-            System.IO.File.Delete(filePath);
+            if (System.IO.File.Exists(filePath))
+            {
+                System.IO.File.Delete(filePath);
+                _logger.LogDebug("Fichier temporaire supprimé : {FilePath}", filePath);
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Impossible de supprimer {FilePath}", filePath);
+            _logger.LogWarning(ex, "Impossible de supprimer le fichier temporaire {FilePath}", filePath);
         }
     }
 
