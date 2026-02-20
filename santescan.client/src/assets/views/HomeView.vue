@@ -6,7 +6,7 @@
         <!-- Logo -->
         <div class="flex items-center gap-3">
           <div class="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center">
-            <span class="text-white text-2xl">🩺</span>
+            <img src="@/assets/images/logoSanteScan.png" alt="Logo Santé Scan" class="w-full h-full object-cover rounded-full">
           </div>
           <div>
             <h1 class="text-2xl font-bold text-gray-800">SANTÉ SCAN</h1>
@@ -79,8 +79,18 @@
   import ScanButton from '@/components/ScanButton.vue';
   import AnalysisResult from '@/components/AnalysisResult.vue';
   import HistoryView from '@/components/HistoryView.vue';
+  import RegisterModal from '@/components/RegisterModal.vue';
 
-  interface AnalysisResult {
+  // Type emitted by ScanButton
+  interface ScanResult {
+    analysisId: string;
+    message: string;
+    uploadDate: string;
+    status: string;
+  }
+
+  // Type used by AnalysisResult component
+  interface AnalysisResultData {
     analysisId: string;
     message: string;
     uploadDate?: string;
@@ -88,12 +98,15 @@
     isGuest: boolean;
   }
 
-  const analysisResult = ref<AnalysisResult | null>(null);
+  const analysisResult = ref<AnalysisResultData | null>(null);
   const showRegisterModal = ref(false);
   const historyRefreshTrigger = ref(0);
 
-  const handleAnalysisFinished = (result: AnalysisResult) => {
-    analysisResult.value = result;
+  const handleAnalysisFinished = (result: ScanResult) => {
+    analysisResult.value = {
+      ...result,
+      isGuest: !localStorage.getItem('santescan_user_id')
+    };
     // Rafraîchir l'historique après une nouvelle analyse
     historyRefreshTrigger.value++;
 
